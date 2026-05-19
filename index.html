@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2FA Demo System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            width: 90%;
+            max-width: 500px;
+        }
+        h1, h2 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .link a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .alert {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 8px;
+            display: none;
+        }
+        .alert.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .codes {
+            background: #f0f0f0;
+            padding: 20px;
+            font-family: monospace;
+            font-size: 18px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .qr-code {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .qr-code canvas {
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 10px;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="app">
+        <!-- Dynamic content will load here -->
+    </div>
+
+    <script>
+        // Mock database (stored in localStorage)
+        let users = JSON.parse(localStorage.getItem('users')) || [];
+        
+        // Helper functions
+        function saveUsers() {
+            localStorage.setItem('users', JSON.stringify(users));
+        }
+        
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert ${type}`;
+            alertDiv.textContent = message;
+            const container = document.querySelector('#app');
+            container.insertBefore(alertDiv, container.firstChild);
+            setTimeout(() => alertDiv.remove(), 3000);
+        }
+        
+        // Generate random TOTP secret (simulated)
+        function generateSecret() {
+            return Math.random().toString(36).substring(2, 15).toUpperCase();
+        }
+        
+        // Generate QR code (simulated)
+        function generateQRCode(secret, username) {
+            const qrContainer = document.getElementById('qr-container');
+            if (qrContainer) {
+                qrContainer.innerHTML = `
+                    <div style="text-align: center;">
+                        <div style="background: white; padding: 20px; display: inline-block; border: 2px solid #667eea; border-radius: 10px;">
+                            <strong>Scan with Google Authenticator</strong><br>
+                            <span style="font-family: monospace; font-size: 12px;">${secret}</span>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Generate backup codes
+        function generateBackupCodes() {
+            const codes = [];
+            for (let i = 0; i < 8; i++) {
+                const code = Math.random().toString(36).substring(2, 8).toUpperCase() + 
+                           '-' + Math.random().toString(36).substring(2, 5).toUpperCase();
+                codes.push(code);
+            }
+            return codes;
+        }
+        
+        // Simulate TOTP verification (for demo, any 6-digit number works)
+        function verifyTOTP(input, secret) {
+            // In real 2FA, this would verify against time-based OTP
+            // For demo, accept any 6-digit number
+            return /^\d{6}$/.test(input);
+        }
+        
+        // Pages
+        function showHome() {
+            const app = document.getElementById('app');
+            const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+            
+            if (currentUser) {
+                showDashboard();
+                return;
+            }
+            
+            app.innerHTML = `
+                <h1>🔐 Two-Factor Authentication Demo</h1>
+                <div class="link">
+                    <button onclick="showLogin()">Login</button>
+                    <button onclick="showRegister()" style="margin-top: 10px; background: #28a745;">Register</button>
+                </div>
+            `;
+        }
+        
+        function showRegister() {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <h2>Register</h2>
+                <input type="text" id="reg-username" placeholder="Username" required>
+                <input type="password" id="reg-password" placeholder="Password" required>
+                <button onclick="register()">Register</button>
+                <div class="link"><a href="#" onclick="showLogin()">Already have an account? Login</a></div>
+            `;
+        }
+        
+        function register() {
+            const username = document.getElementById('reg-username').value;
+            const password = document.getElementById('reg-password').value;
+            
+            if (!username || !password) {
+                showAlert('Please fill all fields', 'error');
+                return;
+            }
+            
+            if (users.find(u => u.username === username)) {
+                showAlert('Username already exists', 'error');
+                return;
+            }
+            
+            const user = {
+                username: username,
+                password: password,
+                is2faEnabled: false,
+                totpSecret: null,
+                backupCodes: []
+            };
+            
+            users.push(user);
+            saveUsers();
+            showAlert('Registration successful! Please login.', 'success');
+            showLogin();
+        }
+        
+        function showLogin() {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <h2>Login</h2>
+                <input type="text" id="login-username" placeholder="Username" required>
+                <input type="password" id="login-password" placeholder="Password" required>
+                <button onclick="login()">Login</button>
+                <div class="link"><a href="#" onclick="showRegister()">Create account</a></div>
+            `;
+        }
+        
+        function login() {
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            
+            const user = users.find(u => u.username === username && u.password === password);
+            
+            if (!user) {
+                showAlert('Invalid username or password', 'error');
+                return;
+            }
+            
+            sessionStorage.setItem('pendingUser', JSON.stringify(user));
+            
+            if (user.is2faEnabled) {
+                showVerify2FA();
+            } else {
+                sessionStorage.setItem('currentUser', JSON.stringify(user));
+                showDashboard();
+            }
+        }
+        
+        function showSetup2FA() {
+            const pendingUser = JSON.parse(sessionStorage.getItem('pendingUser'));
+            if (!pendingUser) {
+                showLogin();
+                return;
+            }
+            
+            if (!pendingUser.totpSecret) {
+                pendingUser.totpSecret = generateSecret();
+                const userIndex = users.findIndex(u => u.username === pendingUser.username);
+                users[userIndex] = pendingUser;
+                saveUsers();
+            }
+            
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <h2>Enable Two-Factor Authentication</h2>
+                <p>Scan this QR code with Google Authenticator:</p>
+                <div id="qr-container"></div>
+                <p>Or enter secret manually: <strong>${pendingUser.totpSecret}</strong></p>
+                <input type="text" id="otp-code" placeholder="Enter 6-digit code" maxlength="6">
+                <button onclick="enable2FA()">Verify & Enable</button>
+                <div class="link"><a href="#" onclick="showDashboard()">Skip for now</a></div>
+            `;
+            
+            generateQRCode(pendingUser.totpSecret, pendingUser.username);
+        }
+        
+        function enable2FA() {
+            const otp = document.getElementById('otp-code').value;
+            const pendingUser = JSON.parse(sessionStorage.getItem('pendingUser'));
+            
+            if (verifyTOTP(otp, pendingUser.totpSecret)) {
+                pendingUser.is2faEnabled = true;
+                pendingUser.backupCodes = generateBackupCodes();
+                
+                const userIndex = users.findIndex(u => u.username === pendingUser.username);
+                users[userIndex] = pendingUser;
+                saveUsers();
+                
+                sessionStorage.setItem('currentUser', JSON.stringify(pendingUser));
+                sessionStorage.removeItem('pendingUser');
+                
+                showBackupCodes(pendingUser.backupCodes);
+            } else {
+                showAlert('Invalid code. Please try again.', 'error');
+            }
+        }
+        
+        function showBackupCodes(codes) {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <h2>⚠️ Save Your Backup Codes</h2>
+                <p>These codes can be used if you lose access to your authenticator app.</p>
+                <div class="codes">
+                    ${codes.map(code => `<div>${code}</div>`).join('')}
+                </div>
+                <p><strong>Save these codes securely!</strong> They will not be shown again.</p>
+                <button onclick="showDashboard()">I have saved my codes</button>
+            `;
+        }
+        
+        function showVerify2FA() {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <h2>Two-Factor Authentication</h2>
+                <p>Enter the 6-digit code from your authenticator app:</p>
+                <input type="text" id="2fa-code" placeholder="000000" maxlength="6">
+                <button onclick="verify2FA()">Verify</button>
+                <div class="link"><a href="#" onclick="showBackupCodeLogin()">Use backup code</a></div>
+            `;
+        }
+        
+        function verify2FA() {
+            const code = document.getElementById('2fa-code').value;
+            const pendingUser = JSON.parse(sessionStorage.getItem('pendingUser'));
+            
+            if (verifyTOTP(code, pendingUser.totpSecret)) {
+                sessionStorage.setItem('currentUser', JSON.stringify(pendingUser));
+                sessionStorage.removeItem('pendingUser');
+                showDashboard();
+            } else {
+                showAlert('Invalid code', 'error');
+            }
+        }
+        
+        function showBackupCodeLogin() {
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <h2>Enter Backup Code</h2>
+                <input type="text" id="backup-code" placeholder="Enter backup code">
+                <button onclick="verifyBackupCode()">Verify</button>
+                <div class="link"><a href="#" onclick="showVerify2FA()">Back to 2FA</a></div>
+            `;
+        }
+        
+        function verifyBackupCode() {
+            const code = document.getElementById('backup-code').value;
+            const pendingUser = JSON.parse(sessionStorage.getItem('pendingUser'));
+            const user = users.find(u => u.username === pendingUser.username);
+            
+            const codeIndex = user.backupCodes.indexOf(code);
+            if (codeIndex !== -1) {
+                // Remove used backup code
+                user.backupCodes.splice(codeIndex, 1);
+                saveUsers();
+                
+                sessionStorage.setItem('currentUser', JSON.stringify(user));
+                sessionStorage.removeItem('pendingUser');
+                showAlert('Backup code used. Please generate new backup codes.', 'success');
+                showDashboard();
+            } else {
+                showAlert('Invalid backup code', 'error');
+            }
+        }
+        
+        function showDashboard() {
+            const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+            if (!currentUser) {
+                showHome();
+                return;
+            }
+            
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <h2>Welcome, ${currentUser.username}!</h2>
+                <p>2FA Status: ${currentUser.is2faEnabled ? '✅ Enabled' : '❌ Disabled'}</p>
+                ${!currentUser.is2faEnabled ? 
+                    `<button onclick="showSetup2FA()">🔐 Enable 2FA</button>` : 
+                    `<button onclick="showManageBackupCodes()">📋 Manage Backup Codes</button>`
+                }
+                <button onclick="logout()" style="background: #dc3545;">🚪 Logout</button>
+            `;
+        }
+        
+        function showManageBackupCodes() {
+            const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+            const user = users.find(u => u.username === currentUser.username);
+            
+            const app = document.getElementById('app');
+            app.innerHTML = `
+                <h2>Backup Codes</h2>
+                <p>Remaining backup codes: ${user.backupCodes.length}/8</p>
+                <button onclick="regenerateBackupCodes()">Generate New Backup Codes</button>
+                <div class="link"><a href="#" onclick="showDashboard()">Back to Dashboard</a></div>
+            `;
+        }
+        
+        function regenerateBackupCodes() {
+            const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
+            const userIndex = users.findIndex(u => u.username === currentUser.username);
+            const newCodes = generateBackupCodes();
+            users[userIndex].backupCodes = newCodes;
+            saveUsers();
+            
+            sessionStorage.setItem('currentUser', JSON.stringify(users[userIndex]));
+            showBackupCodes(newCodes);
+        }
+        
+        function logout() {
+            sessionStorage.clear();
+            showHome();
+        }
+        
+        // Initialize
+        showHome();
+    </script>
+</body>
+</html>
